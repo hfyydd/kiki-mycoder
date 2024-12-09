@@ -1,16 +1,29 @@
-import React, { useRef, useEffect } from 'react';
-import { useChat} from 'ai/react';
-import { ToolInvocation } from 'ai';
+import React, { useRef, useEffect, useState } from 'react';
+import { useChat } from 'ai/react';
+
 import { LoadingIndicator } from './components/LoadingIndicator';
+
 declare global {
     interface Window {
+        vscodeApi: any;
         acquireVsCodeApi: () => any;
     }
 }
 
-const vscode = window.acquireVsCodeApi();
+if (!window.vscodeApi) {
+    window.vscodeApi = window.acquireVsCodeApi();
+}
 
+const vscode = window.vscodeApi;
 
+interface ToolInvocation {
+    id: string;
+    toolName: string;
+    args: any;
+    toolCallId: string;
+    data?: string[];
+    result?: string;
+}
 
 interface Message {
     id: string;
@@ -20,24 +33,57 @@ interface Message {
 }
 
 export function ChatPanel() {
+    const [workspaceRoot, setWorkspaceRoot] = useState<string>('');
+
+    useEffect(() => {
+        // 只监听消息
+        const messageHandler = (event: MessageEvent) => {
+            const message = event.data;
+            console.log('收到消息:', message); // 调试日志
+            if (message.type === 'workspaceRoot') {
+                setWorkspaceRoot(message.value);
+                console.log('设置工作区路径:', message.value); // 调试日志
+            }
+        };
+
+        window.addEventListener('message', messageHandler);
+        return () => window.removeEventListener('message', messageHandler);
+    }, []);
+
     const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading } = useChat({
         api: 'http://localhost:8080/stream-data',
         maxSteps: 5,
-
-      // run client-side tools that are automatically executed:
-      async onToolCall({ toolCall }) {
-        console.log('🛠️ 工具调用:', toolCall);
-      },
+        fetch: async (url, options) => {
+            const customParams = {
+              workspaceRoot: workspaceRoot,
+            };
+      
+            // 修改请求体，添加自定义参数
+            const body = JSON.parse((options!.body as string) || "{}");
+            options!.body = JSON.stringify({
+              ...body,
+              ...customParams,
+            });
+      
+            // 发送请求
+            return fetch(url, options);
+        },
+        async onToolCall({ toolCall }) {
+            console.log('🛠️ 工具调用:', toolCall);
+            console.log('🛠️ 工作区路径:', workspaceRoot);
+        },
     });
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
 
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
 
     return (
         <div className="chat-container">
@@ -47,14 +93,12 @@ export function ChatPanel() {
                         <div className="message-content">
                             {message.content}
                             {message.toolInvocations?.map((toolInvocation) => {
-
-
                                 const toolCallId = toolInvocation.toolCallId;
                                 const addResult = (result: string) =>
                                     addToolResult({ toolCallId, result });
 
                                 // 确认工具的渲染
-                                if (toolInvocation.toolName === 'askForConfirmation') {
+                                if (toolInvocation.toolName === 'AskForConfirmation') {
                                     const currentToolCallId = toolInvocation.toolCallId;
                                     return (
                                         <div key={currentToolCallId} className="tool-invocation confirmation-dialog">
@@ -91,7 +135,8 @@ export function ChatPanel() {
                                 }
 
                                 // 命令行工具的渲染
-                                if (toolInvocation.toolName === 'executeCommand') {
+                                if (toolInvocation.toolName === 'ExecuteCommand') {
+                                    console.log('命令执行数据:', toolInvocation);
                                     return (
                                         <div key={toolInvocation.toolCallId} className="tool-invocation">
                                             <div className="command-line">
@@ -100,14 +145,27 @@ export function ChatPanel() {
                                                     {toolInvocation.args.command}
                                                 </span>
                                             </div>
-                                            {'result' in toolInvocation && (
-                                                <pre className="command-result">
-                                                    {toolInvocation.result}
-                                                </pre>
-                                            )}
+                                            <pre className="command-result">
+                                                {(() => {
+                                                    try {
+                                                        const result = (toolInvocation as any).result;
+                                                        if (typeof result === 'string') {
+                                                            const parsed = JSON.parse(result);
+                                                            if (parsed.type === 'stderr') {
+                                                                return <span className="error-output">{parsed.content}</span>;
+                                                            }
+                                                            return parsed.content || result;
+                                                        }
+                                                        return result || '执行中...';
+                                                    } catch (e) {
+                                                        return (toolInvocation as any).result || '执行中...';
+                                                    }
+                                                })()}
+                                            </pre>
                                         </div>
                                     );
                                 }
+
 
                                 // 其他工具的渲染
                                 return 'result' in toolInvocation ? (

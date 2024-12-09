@@ -6,6 +6,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register the command
     const disposable = vscode.commands.registerCommand('kiki-mycoder.openChat', () => {
+        // 获取当前工作区的根路径
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const workspaceRoot = workspaceFolders ? workspaceFolders[0].uri.fsPath : '';
+        console.log('🛠️ 工作区根路径:', workspaceRoot);
         // Create and show panel
         const panel = vscode.window.createWebviewPanel(
             'kikiMyCoder',
@@ -22,6 +26,14 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Set webview content
         panel.webview.html = getWebviewContent(context, panel.webview);
+
+        // 立即发送工作区路径到 webview
+        panel.webview.postMessage({ 
+            type: 'workspaceRoot', 
+            value: workspaceRoot 
+        });
+
+    
     });
 
     context.subscriptions.push(disposable);
@@ -47,7 +59,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
     </head>
     <body>
         <div id="root"></div>
-        <script src="${scriptUri}"></script>
+        <script nonce="${nonce}" src="${scriptUri}"></script>
     </body>
     </html>`;
 }
