@@ -39,7 +39,7 @@ export const LoadingIndicator: React.FC = () => {
   return (
     <Container>
       <Indicator />
-      <Text>Waiting on response{dots}</Text>
+      <Text>Generating{dots}</Text>
     </Container>
   );
 };

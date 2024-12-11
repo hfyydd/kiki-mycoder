@@ -16,8 +16,13 @@
   "contributes": {
     "commands": [
       {
-        "command": "kiki-mycoder.openChat",
+        "command": "kiki-mycoder.chatView",
         "title": "Kiki MyCoder: Open AI Chat"
+      },
+      {
+        "command": "kiki-mycoder.add",
+        "title": "Add New Chat",
+        "icon": "$(add)"
       }
     ],
     "viewsContainers": {
@@ -32,12 +37,29 @@
     "views": {
       "kiki-mycoder": [
         {
-          "id": "kiki-mycoder-chat",
-          "name": "AI Chat",
-          "type": "webview"
+          "type": "webview",
+          "id": "kiki-mycoder.chatView",
+          "name": "Chat"
         }
       ]
-    }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "kiki-mycoder.add",
+          "when": "view == kiki-mycoder.chatView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "kiki-mycoder.insertSelectedText",
+        "key": "cmd+l",
+        "mac": "cmd+l",
+        "when": "editorHasSelection"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",
@@ -67,7 +89,9 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.7",
+    "@types/prismjs": "^1.26.5",
     "@types/styled-components": "^5.1.34",
+    "prismjs": "^1.29.0",
     "styled-components": "^6.1.13",
     "zod": "^3.23.8"
   }

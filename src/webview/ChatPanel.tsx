@@ -1,5 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useChat } from 'ai/react';
+import Prism from 'prismjs';
+import 'prismjs/themes/prism-tomorrow.css';  // 暗色主题
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-python';
 
 import { LoadingIndicator } from './components/LoadingIndicator';
 
@@ -32,50 +40,69 @@ interface Message {
     toolInvocations?: ToolInvocation[];
 }
 
+// 添加代码高亮组件
+const CodeBlock = ({ content }: { content: string }) => {
+    useEffect(() => {
+        Prism.highlightAll();
+    }, [content]);
+
+    // 检测代码语言
+    const detectLanguage = (code: string): string => {
+        if (code.includes('interface ') || code.includes('type ')) return 'typescript';
+        if (code.includes('def ') || code.includes('import ')) return 'python';
+        if (code.includes('function ') || code.includes('const ')) return 'javascript';
+        return 'plaintext';
+    };
+
+    const language = detectLanguage(content);
+
+    return (
+        <pre className="code-block">
+            <code className={`language-${language}`}>
+                {content}
+            </code>
+        </pre>
+    );
+};
+
 export function ChatPanel() {
     const [workspaceRoot, setWorkspaceRoot] = useState<string>('');
-
-    useEffect(() => {
-        // 只监听消息
-        const messageHandler = (event: MessageEvent) => {
-            const message = event.data;
-            console.log('收到消息:', message); // 调试日志
-            if (message.type === 'workspaceRoot') {
-                setWorkspaceRoot(message.value);
-                console.log('设置工作区路径:', message.value); // 调试日志
-            }
-        };
-
-        window.addEventListener('message', messageHandler);
-        return () => window.removeEventListener('message', messageHandler);
-    }, []);
-
-    const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading } = useChat({
+    const [currentFile, setCurrentFile] = useState<string>('');
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [dropdownItems] = useState([
+        { id: 'code', label: 'Code Context Items' },
+        { id: 'files', label: 'Files' },
+        { id: 'directories', label: 'Directories' }
+    ]);
+    const [files, setFiles] = useState<string[]>([]);
+    const [selectedItem, setSelectedItem] = useState<string | null>(null);
+    const [dropdownType, setDropdownType] = useState<string | null>(null);
+    const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
         api: 'http://localhost:8080/stream-data',
         maxSteps: 5,
         fetch: async (url, options) => {
             const customParams = {
-              workspaceRoot: workspaceRoot,
+                workspaceRoot: workspaceRoot,
+                currentFile: currentFile
             };
-      
-            // 修改请求体，添加自定义参数
+            
             const body = JSON.parse((options!.body as string) || "{}");
             options!.body = JSON.stringify({
-              ...body,
-              ...customParams,
+                ...body,
+                ...customParams,
             });
-      
-            // 发送请求
+
             return fetch(url, options);
         },
         async onToolCall({ toolCall }) {
             console.log('🛠️ 工具调用:', toolCall);
             console.log('🛠️ 工作区路径:', workspaceRoot);
+            console.log('🛠️ 当前文件:', currentFile);
         },
     });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
+    const [tempText, setTempText] = useState<{[key: string]: string}>({});
 
     useEffect(() => {
         scrollToBottom();
@@ -83,6 +110,103 @@ export function ChatPanel() {
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(() => {
+        const messageHandler = (event: MessageEvent) => {
+            const message = event.data;
+            if (message.type === 'workspaceRoot') {
+                setWorkspaceRoot(message.value);
+            } else if (message.type === 'currentFile') {
+                setCurrentFile(message.value);
+            } else if (message.type === 'newChat') {
+                setMessages([]);
+            } else if (message.type === 'fileList') {
+                setFiles(message.files);
+            } else if (message.type === 'insertText') {
+                // 存储实际文本到临时存储中
+                const newTempText = {...tempText};
+                newTempText[message.reference] = message.text;
+                setTempText(newTempText);
+                
+                // 只在输入框中显示引用
+                const newInput = input + message.reference + ' ';
+                handleInputChange({ target: { value: newInput } } as React.ChangeEvent<HTMLInputElement>);
+            }
+        };
+
+        window.addEventListener('message', messageHandler);
+        return () => window.removeEventListener('message', messageHandler);
+    }, [setMessages, input, tempText]);
+
+    const handleInputChange2 = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        if (value.endsWith('@')) {
+            setShowDropdown(true);
+        } else {
+            setShowDropdown(false);
+        }
+        handleInputChange(e);
+    };
+
+    // 获取当前文件夹下的文件列表
+    const fetchFiles = async () => {
+        try {
+            // 通过 vscode API 获取文件列表
+            vscode.postMessage({ 
+                type: 'getFiles', 
+                path: workspaceRoot 
+            });
+        } catch (error) {
+            console.error('获取文件列表失败:', error);
+        }
+    };
+
+    const handleDropdownItemClick = (item: { id: string, label: string }) => {
+        if (item.id === 'files') {
+            setDropdownType('files');
+            fetchFiles();
+        } else {
+            setDropdownType(null);
+            setShowDropdown(false);
+        }
+    };
+
+    const handleFileSelect = (fileName: string) => {
+        const newInput = input.slice(0, -1) + '@' + fileName + ' ';
+        handleInputChange({ target: { value: newInput } } as React.ChangeEvent<HTMLInputElement>);
+        setShowDropdown(false);
+        setDropdownType(null);
+    };
+
+    const handleSubmit2 = async (e: React.FormEvent) => {
+        console.log('handleSubmit2 开始执行');  // 检查函数是否被调用
+        e.preventDefault();
+        
+        console.log('当前input值:', input);  // 检查当前输入值
+        console.log('当前tempText:', tempText);  // 检查临时存储的内容
+        
+        // 处理提交的文本，替换引用为实际内容
+        let processedInput = input;
+        Object.entries(tempText).forEach(([reference, text]) => {
+            console.log('正在处理引用:', reference);  // 检查每个引用的处理
+            processedInput = processedInput.replace(reference, `\n\`\`\`\n${text}\n\`\`\`\n`);
+        });
+        console.log('处理后的文本:', processedInput);  // 确保这行会执行
+        
+        // 使用处理后的文本提交
+        handleInputChange({ target: { value: processedInput } } as React.ChangeEvent<HTMLInputElement>);
+        
+        // 清空临时存储
+        setTempText({});
+        
+        try {
+            // 最后才调用原始的 handleSubmit
+            await handleSubmit(e);
+            console.log('handleSubmit 执行完成');  // 检查是否完成提交
+        } catch (error) {
+            console.error('提交时发生错误:', error);  // 捕获可能的错误
+        }
     };
 
     return (
@@ -166,6 +290,33 @@ export function ChatPanel() {
                                     );
                                 }
 
+                                if (toolInvocation.toolName === 'ViewFile') {
+                                    return 'result' in toolInvocation ? (
+                                        <div key={toolCallId} className="tool-invocation">
+                                            工具调用 {`${toolInvocation.toolName}: `}
+                                            <CodeBlock content={toolInvocation.result} />
+                                        </div>
+                                    ) : (
+                                        <div key={toolCallId} className="tool-invocation">
+                                            正在查看<span className="loading-dots">...</span>
+                                        </div>
+                                    );
+                                }
+                                if (toolInvocation.toolName === 'EditFile' || toolInvocation.toolName === 'WriteFile') {
+                                    return 'result' in toolInvocation ? (
+                                        <div key={toolCallId} className="tool-invocation">
+                                            <div className="edit-header">
+                                                <span className="edit-dot">•</span>
+                                                <span>Edited</span>
+                                                <span className="filename">{toolInvocation.result}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div key={toolCallId} className="tool-invocation">
+                                            正在编辑<span className="loading-dots">...</span>
+                                        </div>
+                                    );
+                                }
 
                                 // 其他工具的渲染
                                 return 'result' in toolInvocation ? (
@@ -186,28 +337,59 @@ export function ChatPanel() {
                 <div ref={messagesEndRef} />
             </div>
             <div className="input-container">
-                <form onSubmit={handleSubmit} className="input-form">
+                <form onSubmit={handleSubmit2} className="input-form">
                     <input
                         value={input}
-                        onChange={handleInputChange}
+                        onChange={handleInputChange2}
                         placeholder="Ask anything (⌘L), @ to mention, ⌃ to select"
                         className="chat-input"
                     />
+                    {showDropdown && (
+                        <div className="dropdown-menu">
+                            {dropdownType === 'files' ? (
+                                files.map(file => (
+                                    <div 
+                                        key={file} 
+                                        className="dropdown-item"
+                                        onClick={() => handleFileSelect(file)}
+                                    >
+                                        {file}
+                                    </div>
+                                ))
+                            ) : (
+                                dropdownItems.map(item => (
+                                    <div 
+                                        key={item.id} 
+                                        className="dropdown-item"
+                                        onClick={() => handleDropdownItemClick(item)}
+                                    >
+                                        {item.label}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
                 </form>
             </div>
             <style>{`
                 .chat-container {
+                    height: 100%;
+                    min-height: 100%;
                     display: flex;
                     flex-direction: column;
-                    height: 100vh;
-                    background: #1e1e1e;
-                    color: #d4d4d4;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                    background: var(--vscode-sideBar-background);
+                    color: var(--vscode-sideBar-foreground);
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
                 }
                 .messages {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 1rem;
+                    padding: 0.5rem;
+                    margin-bottom: 60px;
                 }
                 .message {
                     margin: 0.5rem 0;
@@ -227,9 +409,13 @@ export function ChatPanel() {
                     color: #d4d4d4;
                 }
                 .input-container {
-                    border-top: 1px solid #333;
-                    padding: 1rem;
-                    background: #1e1e1e;
+                    padding: 0.5rem;
+                    background: var(--vscode-sideBar-background);
+                    border-top: 1px solid var(--vscode-sideBar-border);
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
                 }
                 .input-form {
                     display: flex;
@@ -237,14 +423,10 @@ export function ChatPanel() {
                 }
                 .chat-input {
                     width: 100%;
-                    padding: 0.75rem 1rem;
-                    background: #2d2d2d;
-                    border: 1px solid #404040;
-                    border-radius: 6px;
-                    color: #d4d4d4;
-                    font-size: 14px;
-                    outline: none;
-                    transition: border-color 0.2s;
+                    padding: 0.5rem;
+                    background: var(--vscode-input-background);
+                    border: 1px solid var(--vscode-input-border);
+                    color: var(--vscode-input-foreground);
                 }
                 .chat-input:focus {
                     border-color: #0078d4;
@@ -345,6 +527,106 @@ export function ChatPanel() {
                 .tool-buttons {
                     display: flex;
                     gap: 8px;
+                }
+
+                .code-block {
+                    background: #1e1e1e;
+                    border-radius: 4px;
+                    padding: 1rem;
+                    margin: 0.5rem 0;
+                    overflow-x: auto;
+                    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+                }
+
+                .code-block code {
+                    white-space: pre;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                /* Prism 主题覆盖样式 */
+                :not(pre) > code[class*="language-"],
+                pre[class*="language-"] {
+                    background: #1e1e1e;
+                }
+
+                .token.comment,
+                .token.prolog,
+                .token.doctype,
+                .token.cdata {
+                    color: #6a9955;
+                }
+
+                .token.function {
+                    color: #dcdcaa;
+                }
+
+                .token.keyword {
+                    color: #569cd6;
+                }
+
+                .token.string {
+                    color: #ce9178;
+                }
+
+                .token.number {
+                    color: #b5cea8;
+                }
+
+                .dropdown-menu {
+                    position: absolute;
+                    bottom: 100%;
+                    left: 0;
+                    right: 0;
+                    background: var(--vscode-dropdown-background);
+                    border: 1px solid var(--vscode-dropdown-border);
+                    border-radius: 4px;
+                    margin: 4px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                }
+
+                .dropdown-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    color: var(--vscode-dropdown-foreground);
+                }
+
+                .dropdown-item:hover {
+                    background: var(--vscode-list-hoverBackground);
+                }
+
+                .loading-dots {
+                    display: inline-block;
+                    animation: dotsAnimation 1.4s infinite;
+                    letter-spacing: 2px;
+                }
+
+                @keyframes dotsAnimation {
+                    0%, 20% { content: '.'; }
+                    40% { content: '..'; }
+                    60% { content: '...'; }
+                    80%, 100% { content: ''; }
+                }
+
+                .edit-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 8px;
+                    background: rgba(30, 30, 30, 0.8);
+                    border-radius: 4px;
+                    color: var(--vscode-foreground);
+                }
+
+                .edit-dot {
+                    color: var(--vscode-foreground);
+                    opacity: 0.6;
+                }
+
+                .filename {
+                    color: rgba(255, 255, 255, 0.6);
+                    font-family: monospace;
                 }
             `}</style>
         </div>
