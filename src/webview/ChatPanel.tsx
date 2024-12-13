@@ -214,7 +214,8 @@ function ChatPanel() {
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [dropdownType, setDropdownType] = useState<string | null>(null);
     const [selectedModel, setSelectedModel] = useState<string>('');
-    const { messages, input,setInput, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
+    const processedContentRef = useRef('');
+    const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
         api: 'http://localhost:8080/stream-data',
         maxSteps: 5,
         fetch: async (url, options) => {
@@ -225,10 +226,14 @@ function ChatPanel() {
             };
             
             const body = JSON.parse((options!.body as string) || "{}");
+            if (processedContentRef.current) {
+                body.messages[body.messages.length - 1].content = processedContentRef.current;
+            }
             options!.body = JSON.stringify({
                 ...body,
                 ...customParams,
             });
+            console.log('🛠️ body:', options!.body);
 
             return fetch(url, options);
         },
@@ -339,7 +344,7 @@ function ChatPanel() {
             const language = getLanguageFromExt(fileExt);
             processedInput = processedInput.replace(
                 reference,
-                `\n\n文件 ${reference.slice(1)} 的内容：\n\`\`\`${language}\n${text}\n\`\`\`\n`
+                `\n\n文件 ${reference} 的内容：\n\`\`\`${language}\n${text}\n\`\`\`\n`
             );
         });
         
@@ -389,6 +394,7 @@ function ChatPanel() {
         }
         
         console.log('处理后的文本:', processedInput);
+        processedContentRef.current = processedInput;
         
         // 使用处理后的文本提交
         //handleInputChange({ target: { value: processedInput } } as React.ChangeEvent<HTMLInputElement>);
@@ -396,7 +402,6 @@ function ChatPanel() {
         // 清空临时存储
         setTempText({});
 
-        setInput(processedInput);
         
         try {
             await handleSubmit(e);
