@@ -23,6 +23,11 @@
         "command": "kiki-mycoder.add",
         "title": "Add New Chat",
         "icon": "$(add)"
+      },
+      {
+        "command": "kiki-mycoder.openSettings",
+        "title": "Kiki MyCoder: Open Settings",
+        "icon": "$(gear)"
       }
     ],
     "viewsContainers": {
@@ -49,6 +54,11 @@
           "command": "kiki-mycoder.add",
           "when": "view == kiki-mycoder.chatView",
           "group": "navigation"
+        },
+        {
+          "command": "kiki-mycoder.openSettings",
+          "when": "view == kiki-mycoder.chatView",
+          "group": "navigation"
         }
       ]
     },
@@ -63,8 +73,8 @@
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",
-    "build": "tsc -p ./ && vite build",
-    "watch": "tsc -watch -p ./",
+    "build": "tsc -p ./tsconfig.extension.json && vite build",
+    "watch": "tsc -watch -p ./tsconfig.extension.json",
     "dev": "vite",
     "pretest": "pnpm run build",
     "test": "node ./out/test/runTest.js"
@@ -85,14 +95,17 @@
     "sass-loader": "^16.0.4",
     "style-loader": "^4.0.0",
     "typescript": "^5.3.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "webpack": "^5.75.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.7",
     "@types/prismjs": "^1.26.5",
     "@types/styled-components": "^5.1.34",
+    "@types/uuid": "^10.0.0",
     "prismjs": "^1.29.0",
     "styled-components": "^6.1.13",
+    "uuid": "^11.0.3",
     "zod": "^3.23.8"
   }
 }

@@ -1,0 +1,90 @@
+.message-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.text-content {
+    margin: 8px 0;
+}
+
+.code-block {
+    margin: 12px 0;
+    padding: 16px;
+    border-radius: 6px;
+    background-color: #282c34;
+    position: relative;
+    overflow-x: auto;
+}
+
+.code-block code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* 添加代码块的语言标签 */
+.code-block::before {
+    content: attr(class);
+    position: absolute;
+    top: 0;
+    right: 12px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #abb2bf;
+    background: #1e2227;
+    border-radius: 0 0 4px 4px;
+    opacity: 0.7;
+}
+
+/* 滚动条样式 */
+.code-block::-webkit-scrollbar {
+    height: 8px;
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: #282c34;
+    border-radius: 4px;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: #4b5263;
+    border-radius: 4px;
+}
+
+.code-block::-webkit-scrollbar-thumb:hover {
+    background: #5c6370;
+}
+
+/* 光标动画 */
+.cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1.2em;
+    background-color: #fff;
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+}
+
+@keyframes blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+}
+
+/* 助手消息特殊样式 */
+.message.assistant .text-content {
+    position: relative;
+    min-height: 20px;
+}
+
+.message.assistant .text-content:last-child .cursor {
+    display: inline-block;
+}
+
+.message.assistant .text-content:not(:last-child) .cursor {
+    display: none;
+}

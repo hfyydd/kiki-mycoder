@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useChat } from 'ai/react';
+import { Message } from 'ai/react';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';  // 暗色主题
 import 'prismjs/components/prism-typescript';
@@ -8,8 +9,12 @@ import 'prismjs/components/prism-jsx';
 import 'prismjs/components/prism-tsx';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-python';
+import './ChatPanel.css';
+import { v4 as uuidv4 } from 'uuid';
 
 import { LoadingIndicator } from './components/LoadingIndicator';
+
+const API_BASE_URL = 'http://localhost:8080';
 
 declare global {
     interface Window {
@@ -33,15 +38,44 @@ interface ToolInvocation {
     result?: string;
 }
 
-interface Message {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    toolInvocations?: ToolInvocation[];
-}
+// interface Message {
+//     id: string;
+//     role: 'user' | 'assistant';
+//     content: string;
+//     toolInvocations?: ToolInvocation[];
+// }
+
+// 处理消息内容的组件
+const MessageContent = ({ content, role }: { content: string, role: 'user' | 'assistant' | 'system' | 'data' }) => {
+    // 分割代码块和普通文本
+    const parts = content.split(/(```[\s\S]*?```)/);
+
+    return (
+        <div className="message-content">
+            {parts.map((part, index) => {
+                if (part.startsWith('```') && part.endsWith('```')) {
+                    // 提取代码和语言
+                    const codeMatch = part.match(/```(\w+)?\n?([\s\S]*?)```/);
+                    if (codeMatch) {
+                        const language = codeMatch[1] || 'plaintext';
+                        const code = codeMatch[2].trim();
+                        return <CodeBlock key={index} content={code} language={language} />;
+                    }
+                }
+                // 普通文本
+                return (
+                    <div key={index} className="text-content">
+                        {part}
+                        {role === 'assistant' && <span className="cursor" />}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 // 添加代码高亮组件
-const CodeBlock = ({ content }: { content: string }) => {
+const CodeBlock = ({ content, language = 'plaintext' }: { content: string, language?: string }) => {
     useEffect(() => {
         Prism.highlightAll();
     }, [content]);
@@ -54,18 +88,120 @@ const CodeBlock = ({ content }: { content: string }) => {
         return 'plaintext';
     };
 
-    const language = detectLanguage(content);
+    const languageDetected = detectLanguage(content);
 
     return (
         <pre className="code-block">
-            <code className={`language-${language}`}>
+            <code className={`language-${languageDetected}`}>
                 {content}
             </code>
         </pre>
     );
 };
 
-export function ChatPanel() {
+interface ApiConfig {
+    model: string;
+    apiKey: string;
+    resourceName?: string;
+    baseURL?: string;
+    enabled?: boolean;
+}
+
+interface LLMConfig {
+    providerConfigs: {
+        azure?: ApiConfig;
+        deepseek?: ApiConfig;
+    };
+}
+
+// Model selector component
+const ModelSelector = ({ onSelect }: { onSelect: (model: string) => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [models, setModels] = useState<{ provider: string; model: string }[]>([]);
+    const [selectedModel, setSelectedModel] = useState<string>('');
+    const popupRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/webview/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ type: 'getConfig' }),
+                });
+                const data = await response.json();
+
+                const config = data as { llmConfig: LLMConfig };
+                
+                const availableModels = [];
+                if (config.llmConfig.providerConfigs.azure?.enabled) {
+                    
+                    availableModels.push({
+                        provider: 'azure',
+                        model: config.llmConfig.providerConfigs.azure.model
+                    });
+                }
+                if (config.llmConfig.providerConfigs.deepseek?.enabled) {
+                    availableModels.push({
+                        provider: 'deepseek',
+                        model: config.llmConfig.providerConfigs.deepseek.model
+                    });
+                }
+                setModels(availableModels);
+                if (availableModels.length > 0) {
+                    setSelectedModel(availableModels[0].model);
+                    onSelect(availableModels[0].model);
+                }
+            } catch (error) {
+                console.error('Error fetching config:', error);
+            }
+        };
+        fetchConfig();
+    }, [onSelect]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleModelSelect = (model: string) => {
+        setSelectedModel(model);
+        onSelect(model);
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="model-selector">
+            <div className="selected-model" onClick={() => setIsOpen(!isOpen)}>
+                <span className="model-icon">^</span>
+                <span className="model-name">{selectedModel || 'Select Model'}</span>
+            </div>
+            {isOpen && (
+                <div className="model-popup" ref={popupRef}>
+                    {models.map((model, index) => (
+                        <div
+                            key={index}
+                            className={`model-option ${model.model === selectedModel ? 'selected' : ''}`}
+                            onClick={() => handleModelSelect(model.model)}
+                        >
+                            {model.model}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+function ChatPanel() {
     const [workspaceRoot, setWorkspaceRoot] = useState<string>('');
     const [currentFile, setCurrentFile] = useState<string>('');
     const [showDropdown, setShowDropdown] = useState(false);
@@ -77,13 +213,15 @@ export function ChatPanel() {
     const [files, setFiles] = useState<string[]>([]);
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [dropdownType, setDropdownType] = useState<string | null>(null);
-    const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
+    const [selectedModel, setSelectedModel] = useState<string>('');
+    const { messages, input,setInput, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
         api: 'http://localhost:8080/stream-data',
         maxSteps: 5,
         fetch: async (url, options) => {
             const customParams = {
                 workspaceRoot: workspaceRoot,
-                currentFile: currentFile
+                currentFile: currentFile,
+                selectedModel: selectedModel
             };
             
             const body = JSON.parse((options!.body as string) || "{}");
@@ -180,33 +318,108 @@ export function ChatPanel() {
     };
 
     const handleSubmit2 = async (e: React.FormEvent) => {
-        console.log('handleSubmit2 开始执行');  // 检查函数是否被调用
+        console.log('handleSubmit2 开始执行');
         e.preventDefault();
         
-        console.log('当前input值:', input);  // 检查当前输入值
-        console.log('当前tempText:', tempText);  // 检查临时存储的内容
+        console.log('当前input值:', input);
+        console.log('当前tempText:', tempText);
+        
+        // 提取所有@文件引用
+        const regex = /@([^\s]+)/g;
+        const matches = input.match(regex) || [];
+        const fileRefs = matches.filter(ref => !tempText[ref]); // 只处理未在tempText中的引用
         
         // 处理提交的文本，替换引用为实际内容
         let processedInput = input;
+        
+        // 先处理已经在tempText中的引用
         Object.entries(tempText).forEach(([reference, text]) => {
-            console.log('正在处理引用:', reference);  // 检查每个引用的处理
-            processedInput = processedInput.replace(reference, `\n\`\`\`\n${text}\n\`\`\`\n`);
+            console.log('正在处理已有引用:', reference);
+            const fileExt = reference.slice(1).split('.').pop() || '';
+            const language = getLanguageFromExt(fileExt);
+            processedInput = processedInput.replace(
+                reference,
+                `\n\n文件 ${reference.slice(1)} 的内容：\n\`\`\`${language}\n${text}\n\`\`\`\n`
+            );
         });
-        console.log('处理后的文本:', processedInput);  // 确保这行会执行
+        
+        // 处理新的文件引用
+        if (fileRefs.length > 0) {
+            for (const ref of fileRefs) {
+                const fileName = ref.slice(1); // 去掉@
+                try {
+                    // 请求文件内容
+                    vscode.postMessage({
+                        type: 'getFileContent',
+                        fileName: fileName
+                    });
+                    
+                    // 等待响应
+                    const content = await new Promise<string>((resolve, reject) => {
+                        const handler = (event: MessageEvent) => {
+                            const message = event.data;
+                            if (message.type === 'fileContent' && message.fileName === fileName) {
+                                window.removeEventListener('message', handler);
+                                if (message.content === null) {
+                                    reject(new Error(`无法读取文件 ${fileName}`));
+                                } else {
+                                    resolve(message.content);
+                                }
+                            }
+                        };
+                        window.addEventListener('message', handler);
+                        // 5秒超时
+                        setTimeout(() => {
+                            window.removeEventListener('message', handler);
+                            reject(new Error('获取文件内容超时'));
+                        }, 5000);
+                    });
+                    
+                    // 替换文件引用
+                    const fileExt = fileName.split('.').pop() || '';
+                    const language = getLanguageFromExt(fileExt);
+                    processedInput = processedInput.replace(
+                        ref,
+                        `\n\n文件 ${fileName} 的内容：\n\`\`\`${language}\n${content}\n\`\`\`\n`
+                    );
+                } catch (error) {
+                    console.error(`处理文件 ${fileName} 失败:`, error);
+                }
+            }
+        }
+        
+        console.log('处理后的文本:', processedInput);
         
         // 使用处理后的文本提交
-        handleInputChange({ target: { value: processedInput } } as React.ChangeEvent<HTMLInputElement>);
+        //handleInputChange({ target: { value: processedInput } } as React.ChangeEvent<HTMLInputElement>);
         
         // 清空临时存储
         setTempText({});
+
+        setInput(processedInput);
         
         try {
-            // 最后才调用原始的 handleSubmit
             await handleSubmit(e);
-            console.log('handleSubmit 执行完成');  // 检查是否完成提交
+            console.log('handleSubmit 执行完成');
         } catch (error) {
-            console.error('提交时发生错误:', error);  // 捕获可能的错误
+            console.error('提交时发生错误:', error);
         }
+    };
+
+    // 根据文件扩展名获取语言标识
+    const getLanguageFromExt = (ext: string): string => {
+        const languageMap: { [key: string]: string } = {
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'py': 'python',
+            'json': 'json',
+            'html': 'html',
+            'css': 'css',
+            'md': 'markdown'
+        };
+        return languageMap[ext.toLowerCase()] || '';
     };
 
     return (
@@ -214,129 +427,128 @@ export function ChatPanel() {
             <div className="messages">
                 {messages.map((message) => (
                     <div key={message.id} className={`message ${message.role}`}>
-                        <div className="message-content">
-                            {message.content}
-                            {message.toolInvocations?.map((toolInvocation) => {
-                                const toolCallId = toolInvocation.toolCallId;
-                                const addResult = (result: string) =>
-                                    addToolResult({ toolCallId, result });
+                        <MessageContent content={message.content} role={message.role} />
+                        {message.toolInvocations?.map((toolInvocation) => {
+                            const toolCallId = toolInvocation.toolCallId;
+                            const addResult = (result: string) =>
+                                addToolResult({ toolCallId, result });
 
-                                // 确认工具的渲染
-                                if (toolInvocation.toolName === 'AskForConfirmation') {
-                                    const currentToolCallId = toolInvocation.toolCallId;
-                                    return (
-                                        <div key={currentToolCallId} className="tool-invocation confirmation-dialog">
-                                            <h3>Suggested terminal command</h3>
-                                            <div className="command-line">
-                                                <span className="command-prompt">$</span>
-                                                <span className="command-text">
-                                                    {toolInvocation.args.message}
-                                                </span>
-                                            </div>
-                                            <p>Do you want to run this command?</p>
-                                            <div className="tool-buttons">
-                                                {'result' in toolInvocation ? (
-                                                    <b>{toolInvocation.result}</b>
-                                                ) : (
-                                                    <>
-                                                        <button 
-                                                            className="accept-button"
-                                                            onClick={() => addResult('Yes')}
-                                                        >
-                                                            Accept
-                                                        </button>
-                                                        <button 
-                                                            className="reject-button"
-                                                            onClick={() => addResult('No')}
-                                                        >
-                                                            Reject
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
+                            // 确认工具的渲染
+                            if (toolInvocation.toolName === 'AskForConfirmation') {
+                                const currentToolCallId = toolInvocation.toolCallId;
+                                return (
+                                    <div key={currentToolCallId} className="tool-invocation confirmation-dialog">
+                                        <h3>Suggested terminal command</h3>
+                                        <div className="command-line">
+                                            <span className="command-prompt">$</span>
+                                            <span className="command-text">
+                                                {toolInvocation.args.message}
+                                            </span>
                                         </div>
-                                    );
-                                }
+                                        <p>Do you want to run this command?</p>
+                                        <div className="tool-buttons">
+                                            {'result' in toolInvocation ? (
+                                                <b>{toolInvocation.result}</b>
+                                            ) : (
+                                                <>
+                                                    <button 
+                                                        className="accept-button"
+                                                        onClick={() => addResult('Yes')}
+                                                    >
+                                                        Accept
+                                                    </button>
+                                                    <button 
+                                                        className="reject-button"
+                                                        onClick={() => addResult('No')}
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-                                // 命令行工具的渲染
-                                if (toolInvocation.toolName === 'ExecuteCommand') {
-                                    console.log('命令执行数据:', toolInvocation);
-                                    return (
-                                        <div key={toolInvocation.toolCallId} className="tool-invocation">
-                                            <div className="command-line">
-                                                <span className="command-prompt">$</span>
-                                                <span className="command-text">
-                                                    {toolInvocation.args.command}
-                                                </span>
-                                            </div>
-                                            <pre className="command-result">
-                                                {(() => {
-                                                    try {
-                                                        const result = (toolInvocation as any).result;
-                                                        if (typeof result === 'string') {
-                                                            const parsed = JSON.parse(result);
-                                                            if (parsed.type === 'stderr') {
-                                                                return <span className="error-output">{parsed.content}</span>;
-                                                            }
-                                                            return parsed.content || result;
+                            // 命令行工具的渲染
+                            if (toolInvocation.toolName === 'ExecuteCommand') {
+                                console.log('命令执行数据:', toolInvocation);
+                                return (
+                                    <div key={toolInvocation.toolCallId} className="tool-invocation">
+                                        <div className="command-line">
+                                            <span className="command-prompt">$</span>
+                                            <span className="command-text">
+                                                {toolInvocation.args.command}
+                                            </span>
+                                        </div>
+                                        <pre className="command-result">
+                                            {(() => {
+                                                try {
+                                                    const result = (toolInvocation as any).result;
+                                                    if (typeof result === 'string') {
+                                                        const parsed = JSON.parse(result);
+                                                        if (parsed.type === 'stderr') {
+                                                            return <span className="error-output">{parsed.content}</span>;
                                                         }
-                                                        return result || '执行中...';
-                                                    } catch (e) {
-                                                        return (toolInvocation as any).result || '执行中...';
+                                                        return parsed.content || result;
                                                     }
-                                                })()}
-                                            </pre>
-                                        </div>
-                                    );
-                                }
+                                                    return result || '执行中...';
+                                                } catch (e) {
+                                                    return (toolInvocation as any).result || '执行中...';
+                                                }
+                                            })()}
+                                        </pre>
+                                    </div>
+                                );
+                            }
 
-                                if (toolInvocation.toolName === 'ViewFile') {
-                                    return 'result' in toolInvocation ? (
-                                        <div key={toolCallId} className="tool-invocation">
-                                            工具调用 {`${toolInvocation.toolName}: `}
-                                            <CodeBlock content={toolInvocation.result} />
-                                        </div>
-                                    ) : (
-                                        <div key={toolCallId} className="tool-invocation">
-                                            正在查看<span className="loading-dots">...</span>
-                                        </div>
-                                    );
-                                }
-                                if (toolInvocation.toolName === 'EditFile' || toolInvocation.toolName === 'WriteFile') {
-                                    return 'result' in toolInvocation ? (
-                                        <div key={toolCallId} className="tool-invocation">
-                                            <div className="edit-header">
-                                                <span className="edit-dot">•</span>
-                                                <span>Edited</span>
-                                                <span className="filename">{toolInvocation.result}</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div key={toolCallId} className="tool-invocation">
-                                            正在编辑<span className="loading-dots">...</span>
-                                        </div>
-                                    );
-                                }
-
-                                // 其他工具的渲染
+                            if (toolInvocation.toolName === 'ViewFile') {
                                 return 'result' in toolInvocation ? (
                                     <div key={toolCallId} className="tool-invocation">
                                         工具调用 {`${toolInvocation.toolName}: `}
-                                        {toolInvocation.result}
+                                        <CodeBlock content={toolInvocation.result} />
                                     </div>
                                 ) : (
                                     <div key={toolCallId} className="tool-invocation">
-                                        正在调用 {toolInvocation.toolName}...
+                                        正在查看<span className="loading-dots">...</span>
                                     </div>
                                 );
-                            })}
-                        </div>
+                            }
+                            if (toolInvocation.toolName === 'EditFile' || toolInvocation.toolName === 'WriteFile') {
+                                return 'result' in toolInvocation ? (
+                                    <div key={toolCallId} className="tool-invocation">
+                                        <div className="edit-header">
+                                            <span className="edit-dot">•</span>
+                                            <span>Edited</span>
+                                            <span className="filename">{toolInvocation.result}</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div key={toolCallId} className="tool-invocation">
+                                        正在编辑<span className="loading-dots">...</span>
+                                    </div>
+                                );
+                            }
+
+                            // 其他工具的渲染
+                            return 'result' in toolInvocation ? (
+                                <div key={toolCallId} className="tool-invocation">
+                                    工具调用 {`${toolInvocation.toolName}: `}
+                                    {toolInvocation.result}
+                                </div>
+                            ) : (
+                                <div key={toolCallId} className="tool-invocation">
+                                    正在调用 {toolInvocation.toolName}...
+                                </div>
+                            );
+                        })}
                     </div>
                 ))}
                 {isLoading && <LoadingIndicator />}
                 <div ref={messagesEndRef} />
             </div>
             <div className="input-container">
+                <ModelSelector onSelect={setSelectedModel} />
                 <form onSubmit={handleSubmit2} className="input-form">
                     <input
                         value={input}
@@ -628,7 +840,82 @@ export function ChatPanel() {
                     color: rgba(255, 255, 255, 0.6);
                     font-family: monospace;
                 }
+                
+                .cursor {
+                    display: inline-block;
+                    width: 2px;
+                    height: 14px;
+                    background-color: #d4d4d4;
+                    animation: blink 1s infinite;
+                }
+                
+                @keyframes blink {
+                    0% {
+                        opacity: 0;
+                    }
+                    50% {
+                        opacity: 1;
+                    }
+                    100% {
+                        opacity: 0;
+                    }
+                }
+                
+                .model-selector {
+                    position: relative;
+                    margin-bottom: 8px;
+                    color: var(--vscode-input-placeholderForeground);
+                    font-size: 13px;
+                }
+
+                .selected-model {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                }
+
+
+
+                .model-icon {
+                    font-size: 12px;
+                    color: var(--vscode-input-placeholderForeground);
+                }
+
+                .model-name {
+                    color: var(--vscode-input-placeholderForeground);
+                }
+
+                .model-popup {
+                    position: absolute;
+                    bottom: 100%;
+                    left: 0;
+                    min-width: 150px;
+                    background-color: var(--vscode-dropdown-background);
+                    border-radius: 3px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                    z-index: 1000;
+                    margin-bottom: 4px;
+                    padding: 4px 0;
+                }
+
+                .model-option {
+                    padding: 4px 8px;
+                    cursor: pointer;
+                    color: var(--vscode-dropdown-foreground);
+                }
+
+
+
+                .model-option.selected {
+                    background-color: var(--vscode-list-activeSelectionBackground);
+                    color: var(--vscode-list-activeSelectionForeground);
+                }
             `}</style>
         </div>
     );
 }
+
+export default ChatPanel;
