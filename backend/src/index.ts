@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { tool, CoreTool, ToolExecutionOptions } from 'ai';
 import { spawn } from 'child_process';
 import { createAzure } from '@ai-sdk/azure';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import * as fs from 'fs';
@@ -94,6 +95,8 @@ const createProvider = (selectedModel?: string) => {
           baseURL: "https://api.deepseek.com",
           apiKey: providerConfig.apiKey,
         })(providerConfig.model);
+      case 'google':
+        return createGoogleGenerativeAI({ apiKey: providerConfig.apiKey })(providerConfig.model);
       default:
         throw new Error(`Unsupported provider: ${provider}`);
     }
@@ -112,6 +115,9 @@ const createProvider = (selectedModel?: string) => {
       baseURL: "https://api.deepseek.com",
       apiKey: deepseekConfig.apiKey,
     })(selectedModel);
+  } else if (selectedModel.startsWith('gemini')) {
+    const googleConfig = providerConfigs['google'];
+    return createGoogleGenerativeAI({ apiKey: googleConfig.apiKey })(selectedModel);
   }
 
   throw new Error(`Unsupported model: ${selectedModel}`);

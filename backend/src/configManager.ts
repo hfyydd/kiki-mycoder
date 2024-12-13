@@ -47,6 +47,11 @@ class ConfigManager {
             baseURL: 'https://api.deepseek.com',
             enabled: false
           },
+          google: {
+            model: '',
+            apiKey: '',
+            enabled: false
+          }
         },
       },
     };

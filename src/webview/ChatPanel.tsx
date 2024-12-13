@@ -111,6 +111,7 @@ interface LLMConfig {
     providerConfigs: {
         azure?: ApiConfig;
         deepseek?: ApiConfig;
+        google?: ApiConfig;
     };
 }
 
@@ -147,6 +148,12 @@ const ModelSelector = ({ onSelect }: { onSelect: (model: string) => void }) => {
                     availableModels.push({
                         provider: 'deepseek',
                         model: config.llmConfig.providerConfigs.deepseek.model
+                    });
+                }
+                if (config.llmConfig.providerConfigs.google?.enabled) {
+                    availableModels.push({
+                        provider: 'google',
+                        model: config.llmConfig.providerConfigs.google.model
                     });
                 }
                 setModels(availableModels);

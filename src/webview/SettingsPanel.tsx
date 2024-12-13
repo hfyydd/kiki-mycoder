@@ -15,6 +15,11 @@ interface ApiKeyConfig {
         baseURL: string;
         enabled: boolean;
     };
+    google: {
+        model: string;
+        apiKey: string;
+        enabled: boolean;
+    };
 }
 
 type ProviderConfig = ApiKeyConfig[keyof Omit<ApiKeyConfig, 'systemPrompt'>];
@@ -34,6 +39,11 @@ function SettingsPanel() {
             model: '',
             apiKey: '',
             baseURL: '',
+            enabled: false
+        },
+        google: {
+            model: '',
+            apiKey: '',
             enabled: false
         }
     });
@@ -70,7 +80,9 @@ function SettingsPanel() {
                     apiKey: data.llmConfig.providerConfigs.anthropic?.apiKey || ''
                 },
                 google: {
-                    apiKey: data.llmConfig.providerConfigs.google?.apiKey || ''
+                    model: data.llmConfig.providerConfigs.google?.model || '',
+                    apiKey: data.llmConfig.providerConfigs.google?.apiKey || '',
+                    enabled: data.llmConfig.providerConfigs.google?.enabled || false
                 },
                 azure: {
                     resourceName: data.llmConfig.providerConfigs.azure?.resourceName || '',
@@ -258,6 +270,38 @@ function SettingsPanel() {
                         />
                     </div>
                 </div>
+
+                <div className="google-section">
+                    <div className="section-header">
+                        <div className="header-with-status">
+                            <h2>Google</h2>
+                            <select 
+                                className={`enable-select ${config.google.enabled ? 'enabled' : 'disabled'}`}
+                                value={config.google.enabled ? 'enabled' : 'disabled'}
+                                onChange={(e) => handleConfigChange('google', 'enabled', e.target.value === 'enabled')}
+                            >
+                                <option value="enabled">Enabled</option>
+                                <option value="disabled">Disabled</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="input-group">
+                        <input
+                            type="text"
+                            placeholder="Model Name"
+                            value={config.google.model}
+                            onChange={(e) => handleConfigChange('google', 'model', e.target.value)}
+                        />
+                    </div>
+                    <div className="input-group">
+                        <input
+                            type="password"
+                            placeholder="API Key"
+                            value={config.google.apiKey}
+                            onChange={(e) => handleConfigChange('google', 'apiKey', e.target.value)}
+                        />
+                    </div>
+                </div>
             </div>
 
             <style>{`
@@ -326,7 +370,8 @@ function SettingsPanel() {
                 }
 
                 .azure-section,
-                .deepseek-section {
+                .deepseek-section,
+                .google-section {
                     margin-bottom: 32px;
                     margin-top: 32px;
                     padding: 24px;
