@@ -12,6 +12,12 @@ export class FileChangeMonitor {
     private actionButtons: vscode.StatusBarItem[] = [];
     private isTracking: boolean = false;
     private lastChangeEvent?: vscode.TextDocumentChangeEvent;
+    private codeLensProvider: vscode.Disposable | undefined;
+    private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+    public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
+    private changeTimeout: NodeJS.Timeout | undefined;
+    private insertedLines: { line: number, originalText: string }[] = [];
+    private isInserting: boolean = false;
 
     private constructor() {
         console.log('FileChangeMonitor: 初始化中...');
@@ -59,7 +65,44 @@ export class FileChangeMonitor {
 
         this.actionButtons = [acceptButton, rejectButton];
 
-        // 监听文档变化
+        // Register CodeLens provider
+        this.codeLensProvider = vscode.languages.registerCodeLensProvider({ scheme: 'file' }, {
+            provideCodeLenses: (document: vscode.TextDocument) => {
+                const codeLenses: vscode.CodeLens[] = [];
+                if (document === vscode.window.activeTextEditor?.document && this.isTracking) {
+                    const currentContent = document.getText();
+                    const originalLines = this.originalContent.split('\n');
+                    const currentLines = currentContent.split('\n');
+
+                    // Find all changed lines
+                    for (let i = 0; i < Math.max(originalLines.length, currentLines.length); i++) {
+                        if (i >= currentLines.length || i >= originalLines.length || currentLines[i] !== originalLines[i]) {
+                            // Create range for the line above the change
+                            const lineAbove = Math.max(0, i);
+                            const range = document.lineAt(lineAbove).range;
+                            
+                            codeLenses.push(
+                                new vscode.CodeLens(range, {
+                                    title: "✓ Accept",
+                                    command: "fileChangeMonitor.acceptChanges",
+                                    arguments: [document.uri]
+                                }),
+                                new vscode.CodeLens(range, {
+                                    title: "✗ Reject",
+                                    command: "fileChangeMonitor.rejectChanges",
+                                    arguments: [document.uri]
+                                })
+                            );
+                            break; // Only show CodeLens for the first change
+                        }
+                    }
+                }
+                return codeLenses;
+            },
+            onDidChangeCodeLenses: this.onDidChangeCodeLenses
+        });
+
+        // Register document change listener
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument(this.onDocumentChange.bind(this)),
             vscode.window.onDidChangeActiveTextEditor(this.onEditorChange.bind(this))
@@ -73,109 +116,171 @@ export class FileChangeMonitor {
         return FileChangeMonitor.instance;
     }
 
-    private startTracking(editor: vscode.TextEditor) {
-        if (!this.isTracking && editor.document) {
-            console.log('开始追踪文件:', editor.document.fileName);
-            this.originalContent = editor.document.getText();
-            console.log('原始内容长度:', this.originalContent.length);
-            this.isTracking = true;
-        }
+    private startTracking() {
+        console.log('Start tracking changes...');
+        this.isTracking = true;
+        // 强制刷新 CodeLens
+        this.refreshCodeLens();
     }
 
     private onDocumentChange(event: vscode.TextDocumentChangeEvent) {
         console.log('文档变化事件触发');
         const editor = vscode.window.activeTextEditor;
         if (editor && event.document === editor.document) {
+            // 如果是第一次变化或者还没有原始内容，设置原始内容
+            if (!this.isTracking || !this.originalContent) {
+                this.originalContent = editor.document.getText();
+                this.startTracking();
+            }
             this.lastChangeEvent = event;
             this.handleDocumentChange(editor);
         }
+        this.refreshCodeLens();
     }
 
-    private onEditorChange(editor: vscode.TextEditor | undefined) {
-        console.log('编辑器切换事件触发');
-        if (editor) {
-            this.startTracking(editor);
-        }
-        this.hideButtons();
-    }
-
-    private handleDocumentChange(editor: vscode.TextEditor) {
-        if (!this.isTracking) {
-            this.startTracking(editor);
+    private async handleDocumentChange(editor: vscode.TextEditor) {
+        // 如果没有原始内容，先保存当前内容作为原始内容
+        if (!this.originalContent) {
+            this.originalContent = editor.document.getText();
             return;
         }
 
         const currentContent = editor.document.getText();
-        if (this.lastChangeEvent) {
-            const changes = this.getContentChangesFromEvent(editor, this.lastChangeEvent);
-            if (changes.added.length || changes.removed.length) {
-                this.showButtons();
-            } else {
-                this.hideButtons();
-            }
+        // 如果内容没有变化，不处理
+        if (this.originalContent === currentContent) {
+            return;
+        }
+
+        // 确保开始跟踪
+        if (!this.isTracking) {
+            this.startTracking();
+        }
+
+        const originalLines = this.originalContent.split('\n');
+        const currentLines = currentContent.split('\n');
+        
+        const changes = await this.getContentChangesFromEvent(editor, this.lastChangeEvent!);
+        if (changes.added.length || changes.removed.length) {
+            this.showButtons();
+        } else {
+            this.hideButtons();
         }
     }
 
-    private getContentChangesFromEvent(editor: vscode.TextEditor, event: vscode.TextDocumentChangeEvent) {
+    private async getContentChangesFromEvent(editor: vscode.TextEditor, event: vscode.TextDocumentChangeEvent) {
+        // 如果正在插入中，直接返回
+        if (this.isInserting) {
+            return { added: [], removed: [] };
+        }
+
         const added: { range: vscode.Range; originalText?: string }[] = [];
         const removed: { range: vscode.Range; originalText: string }[] = [];
 
-        event.contentChanges.forEach(change => {
-            const originalText = this.originalContent.substring(change.rangeOffset, change.rangeOffset + change.rangeLength);
-            if (change.rangeLength > 0) {
-                removed.push({
-                    range: change.range,
-                    originalText
-                });
-            }
-            if (change.text.length > 0) {
-                const endLine = change.range.start.line + change.text.split('\n').length - 1;
-                const endChar = change.text.split('\n').pop()?.length || 0;
-                added.push({
-                    range: new vscode.Range(
-                        change.range.start,
-                        new vscode.Position(endLine, endChar)
-                    ),
-                    originalText: change.rangeLength > 0 ? originalText : undefined
-                });
-            }
-        });
+        // 清空之前记录的插入位置
+        this.insertedLines = [];
 
-        // 应用装饰器显示原始文本
-        const originalTextDecorations = [...added, ...removed].map(item => {
-            const lineIndex = item.range.start.line;
-            const originalLines = this.originalContent.split('\n');
-            const originalLineContent = lineIndex < originalLines.length ? originalLines[lineIndex] : '';
-            const startPos = new vscode.Position(lineIndex, 0);
-            const endPos = new vscode.Position(lineIndex, 0);
-            return {
-                range: new vscode.Range(startPos, endPos),
-                renderOptions: {
-                    after: {
-                        contentText: originalLineContent || '',
-                        color: '#888',
-                        margin: '0 0 0 0'
+        try {
+            // 获取当前文件的路径
+            const currentFilePath = editor.document.uri.fsPath;
+            const tempFilePath = currentFilePath + '.temp';
+            
+            // 读取.temp文件内容
+            const tempFileUri = vscode.Uri.file(tempFilePath);
+            const tempContent = await vscode.workspace.fs.readFile(tempFileUri);
+            const tempLines = Buffer.from(tempContent).toString('utf8').split('\n');
+
+            // 设置插入标志
+            this.isInserting = true;
+
+            for (const change of event.contentChanges) {
+                const lineStart = change.range.start.line;
+                if (change.text.length > 0) {
+                    const endLine = change.range.start.line + change.text.split('\n').length - 1;
+                    const endChar = change.text.split('\n').pop()?.length || 0;
+                    added.push({
+                        range: new vscode.Range(
+                            change.range.start,
+                            new vscode.Position(endLine, endChar)
+                        ),
+                        originalText: tempLines[lineStart]
+                    });
+
+                    // 在改动位置插入.temp文件中的原始文本
+                    const edit = new vscode.WorkspaceEdit();
+                    const document = editor.document;
+                    
+                    if (tempLines[lineStart]) {
+                        const pos = new vscode.Position(lineStart, 0);
+                        edit.insert(document.uri, pos, tempLines[lineStart] + '\n');
+                        this.insertedLines.push({ line: lineStart, originalText: tempLines[lineStart] });
+                        await vscode.workspace.applyEdit(edit);
                     }
                 }
-            };
-        });
+            }
 
-        //editor.setDecorations(this.originalTextDecoration, originalTextDecorations);
-        editor.setDecorations(this.modifiedDecorationTypes.added, added.map(item => item.range));
-        editor.setDecorations(this.modifiedDecorationTypes.removed, removed.map(item => item.range));
+            editor.setDecorations(this.modifiedDecorationTypes.added, added.map(item => item.range));
+            editor.setDecorations(this.modifiedDecorationTypes.removed, removed.map(item => item.range));
+        } catch (error) {
+            console.error('Failed to read .temp file:', error);
+        } finally {
+            // 重置插入标志
+            this.isInserting = false;
+        }
 
         return { added, removed };
+    }
+
+    private stopTracking() {
+        this.isTracking = false;
+        this.originalContent = '';
+        this.lastChangeEvent = undefined;
+
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            // Clear all decorations
+            editor.setDecorations(this.modifiedDecorationTypes.added, []);
+            editor.setDecorations(this.modifiedDecorationTypes.removed, []);
+            editor.setDecorations(this.originalTextDecoration, []);
+
+            // Force CodeLens refresh
+            this.refreshCodeLens();
+        }
+    }
+
+    private refreshCodeLens() {
+        if (this.changeTimeout) {
+            clearTimeout(this.changeTimeout);
+        }
+        this.changeTimeout = setTimeout(() => {
+            this._onDidChangeCodeLenses.fire();
+            this.changeTimeout = undefined;
+        }, 100);
     }
 
     public async acceptChanges() {
         const editor = vscode.window.activeTextEditor;
         if (!editor) return;
+
         try {
-            await editor.document.save();
-            this.originalContent = editor.document.getText();
-            this.clearDecorations(editor);
+            const document = editor.document;
+            const edit = new vscode.WorkspaceEdit();
+            
+            // 使用记录的位置删除原始文本行
+            for (const { line } of this.insertedLines) {
+                const range = new vscode.Range(
+                    new vscode.Position(line, 0),
+                    new vscode.Position(line + 1, 0)
+                );
+                edit.delete(document.uri, range);
+            }
+            
+            await vscode.workspace.applyEdit(edit);
+            
+            // 停止跟踪并清理
+            this.stopTracking();
             this.hideButtons();
-            vscode.window.showInformationMessage('Changes accepted and saved successfully');
+            await editor.document.save();
+            this.clearDecorations(editor);
         } catch (error) {
             vscode.window.showErrorMessage('Failed to save changes');
         }
@@ -183,18 +288,27 @@ export class FileChangeMonitor {
 
     public async rejectChanges() {
         const editor = vscode.window.activeTextEditor;
-        if (!editor) return;
+        if (!editor || !this.originalContent) return;
+
         try {
+            const document = editor.document;
             const edit = new vscode.WorkspaceEdit();
-            edit.replace(
-                editor.document.uri,
-                new vscode.Range(0, 0, editor.document.lineCount, 0),
-                this.originalContent
-            );
+            
+            // 使用记录的位置删除改动的文本行（原始文本行的下一行）
+            for (const { line } of this.insertedLines) {
+                const range = new vscode.Range(
+                    new vscode.Position(line + 1, 0),
+                    new vscode.Position(line + 2, 0)
+                );
+                edit.delete(document.uri, range);
+            }
+            
             await vscode.workspace.applyEdit(edit);
+            
+            // 清理
+            this.stopTracking();
             this.clearDecorations(editor);
             this.hideButtons();
-            vscode.window.showInformationMessage('Changes rejected successfully');
         } catch (error) {
             vscode.window.showErrorMessage('Failed to reject changes');
         }
@@ -216,10 +330,24 @@ export class FileChangeMonitor {
         editor.setDecorations(this.originalTextDecoration, []);
     }
 
+    private onEditorChange(editor: vscode.TextEditor | undefined) {
+        if (editor && this.isTracking) {
+            this.handleDocumentChange(editor);
+        }
+    }
+
     public dispose() {
         this.disposables.forEach(d => d.dispose());
+        if (this.codeLensProvider) {
+            this.codeLensProvider.dispose();
+        }
+        this._onDidChangeCodeLenses.dispose();
+        if (this.changeTimeout) {
+            clearTimeout(this.changeTimeout);
+        }
         this.actionButtons.forEach(button => button.dispose());
-        Object.values(this.modifiedDecorationTypes).forEach(d => d.dispose());
+        this.modifiedDecorationTypes.added.dispose();
+        this.modifiedDecorationTypes.removed.dispose();
         this.originalTextDecoration.dispose();
     }
 }
