@@ -73,7 +73,7 @@ class ConfigManager {
       // 读取其他配置
       const configContent = await fs.readFile(this.configPath, 'utf-8');
       const configJson = JSON.parse(configContent);
-      console.log(configJson);
+
       
       this.config = {
         systemPrompt,

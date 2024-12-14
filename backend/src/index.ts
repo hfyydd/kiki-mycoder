@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { serve } from '@hono/node-server';
-import { createDataStream, streamText, DataStreamWriter } from 'ai';
+import { createDataStream, streamText, DataStreamWriter, generateText } from 'ai';
 import 'dotenv/config';
 import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
@@ -128,14 +128,15 @@ const createProvider = (selectedModel?: string) => {
 app.post('/', async c => {
   console.log('got a request');
   const result = streamText({
-    model: createProvider(),
+    model: createProvider("gemini-1.5-flash-latest"),
     prompt: 'Invent a new holiday and describe its traditions.',
   });
+
 
   c.header('X-Vercel-AI-Data-Stream', 'v1');
   c.header('Content-Type', 'text/plain; charset=utf-8');
 
-  return stream(c, stream => stream.pipe(result.toDataStream()));
+  return stream(c, stream => stream.pipe(result.toDataStream()));;
 });
 
 app.post('/stream-data', async c => {
@@ -146,7 +147,10 @@ app.post('/stream-data', async c => {
   console.log('当前文件:', currentFile);
   console.log('选择的模型:', selectedModel);
 
-
+  const messagesWithContext = [
+    ...messages,
+    { role: 'system', content: `Current file: ${currentFile}` }
+  ];
   const config = await configManager.getConfig();
 
   const dataStream = createDataStream({
@@ -154,9 +158,10 @@ app.post('/stream-data', async c => {
       console.log('开始处理请求');
       dataStreamWriter.writeData('initialized call');
 
+
       const result = streamText({
         model: createProvider(selectedModel),
-        messages,
+        messages: messages,
         system: config.systemPrompt,
         tools: {
           AskForConfirmation: {
@@ -243,7 +248,7 @@ app.post('/stream-data', async c => {
           ViewFile: {
             description: '查看文件内容',
             parameters: z.object({
-              filePath: z.string().describe('要查看的文件路径,如果为空则查看当前文件')
+              filePath: z.string().describe('要查看的文件路径')
             }),
             execute: async ({ filePath }) => {
               try {
@@ -302,7 +307,7 @@ app.post('/stream-data', async c => {
                 
                 const fullPath = join(workspaceRoot, filePath);
                 await writeFile(fullPath, content, 'utf-8');
-                return filePath;
+                return fullPath;
               } catch (error) {
                 console.error('写入文件错误:', error);
                 return `写入文件错误: ${(error as Error).message}`;
@@ -310,14 +315,14 @@ app.post('/stream-data', async c => {
             }
           },
           EditFile: {
-            description: '对现有文件进行修改,无需用户确认',
+            description: '对现有文件进行修改,可以精确控制修改位置',
             parameters: z.object({
               filePath: z.string().describe('要修改的文件路径'),
-              content: z.string().describe('要写入文件的内容'),
+              content: z.string().describe('要写入的内容'),
             }),
-            execute: async ({ filePath, content }) => {
+            execute: async ({ filePath, content}) => {
+              console.log("Edited ")
               try {
-                //如果 filePath 为空,则使用当前文件路径
                 if (!filePath) {
                   filePath = currentFile;
                 }
@@ -327,7 +332,15 @@ app.post('/stream-data', async c => {
                 }
                 
                 const fullPath = join(workspaceRoot, filePath);
+                
+                // 保存原始文件内容到临时文件
+                const originalContent = await readFile(fullPath, 'utf-8');
+                const tempFilePath = `${fullPath}.temp`;
+                await writeFile(tempFilePath, originalContent, 'utf-8');
+                
+                // 写入新内容
                 await writeFile(fullPath, content, 'utf-8');
+                
                 return filePath;
               } catch (error) {
                 console.error('修改文件错误:', error);

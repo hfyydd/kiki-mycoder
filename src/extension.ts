@@ -1,16 +1,26 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { FileChangeMonitor } from './FileChangeMonitor';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Kiki MyCoder is now active!');
+
+    // 配置自动保存为 off
+    vscode.workspace.getConfiguration().update('files.autoSave', 'off', vscode.ConfigurationTarget.Workspace);
 
     let settingsPanel: vscode.WebviewPanel | undefined = undefined;
 
     // 注册侧边栏视图提供者
     const provider = new ChatViewProvider(context.extensionUri);
     
+    // Register file change monitor
+    const fileMonitor = FileChangeMonitor.getInstance();
+    context.subscriptions.push(fileMonitor);
+
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('kiki-mycoder.chatView', provider),
+        vscode.commands.registerCommand('fileChangeMonitor.acceptChanges', () => fileMonitor.acceptChanges()),
+        vscode.commands.registerCommand('fileChangeMonitor.rejectChanges', () => fileMonitor.rejectChanges()),
         vscode.commands.registerCommand('kiki-mycoder.chatView', async () => {
             // 尝试显示聊天视图
             await vscode.commands.executeCommand('workbench.view.extension.kiki-mycoder');
