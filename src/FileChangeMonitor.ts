@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { diffLines, Change } from 'diff';
 
 export class FileChangeMonitor {
     private static instance: FileChangeMonitor;
@@ -18,6 +19,7 @@ export class FileChangeMonitor {
     private changeTimeout: NodeJS.Timeout | undefined;
     private insertedLines: { line: number, originalText: string }[] = [];
     private isInserting: boolean = false;
+    private processedLines: Set<number> = new Set();
 
     private constructor() {
         console.log('FileChangeMonitor: 初始化中...');
@@ -68,19 +70,19 @@ export class FileChangeMonitor {
         // Register CodeLens provider
         this.codeLensProvider = vscode.languages.registerCodeLensProvider({ scheme: 'file' }, {
             provideCodeLenses: (document: vscode.TextDocument) => {
+                // 在 provideCodeLenses 方法中
                 const codeLenses: vscode.CodeLens[] = [];
                 if (document === vscode.window.activeTextEditor?.document && this.isTracking) {
                     const currentContent = document.getText();
-                    const originalLines = this.originalContent.split('\n');
-                    const currentLines = currentContent.split('\n');
-
-                    // Find all changed lines
-                    for (let i = 0; i < Math.max(originalLines.length, currentLines.length); i++) {
-                        if (i >= currentLines.length || i >= originalLines.length || currentLines[i] !== originalLines[i]) {
-                            // Create range for the line above the change
-                            const lineAbove = Math.max(0, i);
-                            const range = document.lineAt(lineAbove).range;
-                            
+                    
+                    // 使用 diff 算法比较内容
+                    const differences = diffLines(this.originalContent, currentContent);
+                    let lineNumber = 0;
+                    
+                    for (const part of differences) {
+                        if (part.added || part.removed) {
+                            // 在变更处创建 CodeLens
+                            const range = document.lineAt(Math.max(0, lineNumber)).range;
                             codeLenses.push(
                                 new vscode.CodeLens(range, {
                                     title: "✓ Accept",
@@ -93,7 +95,11 @@ export class FileChangeMonitor {
                                     arguments: [document.uri]
                                 })
                             );
-                            break; // Only show CodeLens for the first change
+                            break; // 如果只想显示第一处变更，保留 break
+                        }
+                        // 更新行号
+                        if (!part.removed) {
+                            lineNumber += part.count || 0;
                         }
                     }
                 }
@@ -156,9 +162,6 @@ export class FileChangeMonitor {
             this.startTracking();
         }
 
-        const originalLines = this.originalContent.split('\n');
-        const currentLines = currentContent.split('\n');
-        
         const changes = await this.getContentChangesFromEvent(editor, this.lastChangeEvent!);
         if (changes.added.length || changes.removed.length) {
             this.showButtons();
@@ -173,55 +176,161 @@ export class FileChangeMonitor {
             return { added: [], removed: [] };
         }
 
-        const added: { range: vscode.Range; originalText?: string }[] = [];
-        const removed: { range: vscode.Range; originalText: string }[] = [];
-
-        // 清空之前记录的插入位置
-        this.insertedLines = [];
+        const added: { range: vscode.Range }[] = [];
+        const removed: { range: vscode.Range }[] = [];
 
         try {
             // 获取当前文件的路径
             const currentFilePath = editor.document.uri.fsPath;
             const tempFilePath = currentFilePath + '.temp';
-            
-            // 读取.temp文件内容
             const tempFileUri = vscode.Uri.file(tempFilePath);
+            
+            // 检查.temp文件是否存在
+            try {
+                await vscode.workspace.fs.stat(tempFileUri);
+            } catch {
+                // 如果.temp文件不存在，直接返回
+                return { added, removed };
+            }
+            
+            // 读取.temp文件内容（原始内容）
             const tempContent = await vscode.workspace.fs.readFile(tempFileUri);
-            const tempLines = Buffer.from(tempContent).toString('utf8').split('\n');
+            const oldText = Buffer.from(tempContent).toString('utf8');
+
+            // 获取当前内容
+            const newText = editor.document.getText();
+
+
+            // 使用 diff 库计算差异
+            const differences = diffLines(oldText, newText);
+            
+            console.log('Diff comparison results:');
+            differences.forEach((part: Change, index: number) => {
+                console.log(`Part ${index}:`, {
+                    added: part.added || false,
+                    removed: part.removed || false,
+                    value: part.value,
+                    count: part.count
+                });
+            });
 
             // 设置插入标志
             this.isInserting = true;
+            
+            let currentLine = 0;
+            const edit = new vscode.WorkspaceEdit();
+            
+            // 记录每个差异块的信息
+            const diffBlocks: { start: number, numRed: number, numGreen: number, processed: boolean }[] = [];
+            let currentBlock: { start: number, numRed: number, numGreen: number, processed: boolean } | undefined;
+            
+            // 第一次遍历，计算差异块
+            differences.forEach((part: Change) => {
+                const lines = part.value.split('\n');
+                const lineCount = lines.length - (lines[lines.length - 1] === '' ? 1 : 0);
 
-            for (const change of event.contentChanges) {
-                const lineStart = change.range.start.line;
-                if (change.text.length > 0) {
-                    const endLine = change.range.start.line + change.text.split('\n').length - 1;
-                    const endChar = change.text.split('\n').pop()?.length || 0;
-                    added.push({
-                        range: new vscode.Range(
-                            change.range.start,
-                            new vscode.Position(endLine, endChar)
-                        ),
-                        originalText: tempLines[lineStart]
-                    });
-
-                    // 在改动位置插入.temp文件中的原始文本
-                    const edit = new vscode.WorkspaceEdit();
-                    const document = editor.document;
-                    
-                    if (tempLines[lineStart]) {
-                        const pos = new vscode.Position(lineStart, 0);
-                        edit.insert(document.uri, pos, tempLines[lineStart] + '\n');
-                        this.insertedLines.push({ line: lineStart, originalText: tempLines[lineStart] });
-                        await vscode.workspace.applyEdit(edit);
+                if (part.added || part.removed) {
+                    if (!currentBlock) {
+                        currentBlock = {
+                            start: currentLine,
+                            numRed: 0,
+                            numGreen: 0,
+                            processed: false
+                        };
                     }
+
+                    if (part.added && currentBlock) {
+                        currentBlock.numGreen += lineCount;
+                    } else if (part.removed && currentBlock) {
+                        currentBlock.numRed += lineCount;
+                    }
+                } else if (currentBlock) {
+                    diffBlocks.push(currentBlock);
+                    currentBlock = undefined;
                 }
+
+                if (!part.added) {
+                    currentLine += lineCount;
+                }
+            });
+
+            if (currentBlock) {
+                diffBlocks.push(currentBlock);
+            }
+            
+            // 打印差异块信息
+            console.log('Diff Blocks:', JSON.stringify(diffBlocks, null, 2));
+
+            // 重置计数器
+            currentLine = 0;
+
+            // 第二次遍历，处理装饰器和插入原始内容
+            differences.forEach((part: Change) => {
+                const lines = part.value.split('\n');
+                const lineCount = lines.length - (lines[lines.length - 1] === '' ? 1 : 0);
+
+                if (part.removed) {
+                    // 找到当前行所在的差异块
+                    const block = diffBlocks.find(b => 
+                        currentLine >= b.start && 
+                        currentLine < b.start + b.numRed + b.numGreen &&
+                        !b.processed
+                    );
+
+                    if (block) {
+                        // 在差异块的起始位置插入原始内容
+                        lines.forEach((line, i) => {
+                            if (line || i < lines.length - 1) {
+                                const insertPosition = block.start + i;
+                                // 检查是否已经在这个位置插入过
+                                if (!this.insertedLines.some(il => il.line === insertPosition)) {
+                                    const pos = new vscode.Position(insertPosition, 0);
+                                    edit.insert(editor.document.uri, pos, line + '\n');
+                                    this.insertedLines.push({ line: insertPosition, originalText: line });
+                                    
+                                    // 为原始内容添加删除装饰器
+                                    const range = new vscode.Range(pos, new vscode.Position(insertPosition + 1, 0));
+                                    removed.push({ range });
+                                }
+                            }
+                        });
+                        block.processed = true;
+                    }
+                } else if (part.added) {
+                    // 为新增内容添加添加装饰器
+                    const range = new vscode.Range(
+                        new vscode.Position(currentLine, 0),
+                        new vscode.Position(currentLine + lineCount, lines[lineCount - 1].length)
+                    );
+                    added.push({ range });
+                }
+
+                if (!part.added) {
+                    currentLine += lineCount;
+                }
+            });   
+
+            
+
+            // 应用编辑
+            if (removed.length > 0) {
+                await vscode.workspace.applyEdit(edit);
             }
 
+            // 应用装饰器
             editor.setDecorations(this.modifiedDecorationTypes.added, added.map(item => item.range));
             editor.setDecorations(this.modifiedDecorationTypes.removed, removed.map(item => item.range));
+
+            // 刷新 CodeLens
+            this.refreshCodeLens();
+            
+            // 如果有任何改动，显示按钮
+            if (added.length > 0 || removed.length > 0) {
+                this.showButtons();
+            }
+
         } catch (error) {
-            console.error('Failed to read .temp file:', error);
+            console.error('Diff comparison error:', error);
         } finally {
             // 重置插入标志
             this.isInserting = false;
@@ -234,6 +343,7 @@ export class FileChangeMonitor {
         this.isTracking = false;
         this.originalContent = '';
         this.lastChangeEvent = undefined;
+        this.processedLines.clear();  // 清除处理记录
 
         const editor = vscode.window.activeTextEditor;
         if (editor) {

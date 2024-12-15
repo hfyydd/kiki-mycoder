@@ -295,7 +295,7 @@ app.post('/stream-data', async c => {
               filePath: z.string().describe('要创建的文件路径'),
               content: z.string().describe('要写入文件的内容'),
             }),
-            execute: async ({ filePath, content }) => {
+            execute: async ({ filePath, content,Instruction, }) => {
               try {
                 //如果 filePath 为空,则使用当前文件路径
                 if (!filePath) {
