@@ -2,10 +2,16 @@
   "name": "kiki-mycoder",
   "displayName": "Kiki MyCoder",
   "version": "1.0.0",
+  "publisher": "knowmyself",
   "description": "AI-powered coding assistant for VS Code",
   "main": "./dist/extension.js",
   "engines": {
     "vscode": "^1.95.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hfyydd/kiki-mycoder.git"
   },
   "categories": [
     "Other"
@@ -77,7 +83,9 @@
     "watch": "tsc -watch -p ./tsconfig.extension.json",
     "dev": "vite",
     "pretest": "pnpm run build",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "package": "pnpm vsce package --no-dependencies",
+    "publish": "pnpm vsce publish --no-dependencies"
   },
   "devDependencies": {
     "@types/diff": "^6.0.0",
