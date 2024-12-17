@@ -25,7 +25,7 @@ A VSCode extension inspired by Winsurf, providing AI-powered coding assistance r
 
 1. Clone the repository
    ```bash
-   git clone [your-repository-url]
+   git clone [https://github.com/hfyydd/kiki-mycoder.git]
    ```
 
 2. Install dependencies

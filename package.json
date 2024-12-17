@@ -1,8 +1,8 @@
 {
   "name": "kiki-mycoder",
   "displayName": "Kiki MyCoder",
-  "version": "1.0.0",
-  "publisher": "knowmyself",
+  "version": "1.0.1",
+  "publisher": "hfloveyy",
   "description": "AI-powered coding assistant for VS Code",
   "main": "./dist/extension.js",
   "engines": {
@@ -13,6 +13,7 @@
     "type": "git",
     "url": "https://github.com/hfyydd/kiki-mycoder.git"
   },
+  "icon": "images/logo.png",
   "categories": [
     "Other"
   ],
