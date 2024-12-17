@@ -112,6 +112,7 @@ interface LLMConfig {
         azure?: ApiConfig;
         deepseek?: ApiConfig;
         google?: ApiConfig;
+        ollama?: ApiConfig;
     };
 }
 
@@ -154,6 +155,12 @@ const ModelSelector = ({ onSelect }: { onSelect: (model: string) => void }) => {
                     availableModels.push({
                         provider: 'google',
                         model: config.llmConfig.providerConfigs.google.model
+                    });
+                }
+                if (config.llmConfig.providerConfigs.ollama?.enabled) {
+                    availableModels.push({
+                        provider: 'ollama',
+                        model: config.llmConfig.providerConfigs.ollama.model
                     });
                 }
                 setModels(availableModels);

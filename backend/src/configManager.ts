@@ -3,7 +3,7 @@ import path from 'path';
 
 interface ProviderConfig {
   model: string;
-  apiKey: string;
+  apiKey?: string;
   resourceName?: string;
   baseURL?: string;
   enabled?: boolean;
@@ -50,6 +50,11 @@ class ConfigManager {
           google: {
             model: '',
             apiKey: '',
+            enabled: false
+          },
+          ollama: {
+            model: 'qwen2.5-coder:14b',
+            baseURL: 'http://localhost:11434',
             enabled: false
           }
         },

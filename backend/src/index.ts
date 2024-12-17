@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai'
+
 import { serve } from '@hono/node-server';
 import { createDataStream, streamText, DataStreamWriter, generateText } from 'ai';
 import 'dotenv/config';
@@ -8,7 +8,12 @@ import { z } from 'zod';
 import { tool, CoreTool, ToolExecutionOptions } from 'ai';
 import { spawn } from 'child_process';
 import { createAzure } from '@ai-sdk/azure';
+
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOllama } from 'ollama-ai-provider';
+import { createOpenAI } from '@ai-sdk/openai'
+
+
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import * as fs from 'fs';
@@ -97,6 +102,9 @@ const createProvider = (selectedModel?: string) => {
         })(providerConfig.model);
       case 'google':
         return createGoogleGenerativeAI({ apiKey: providerConfig.apiKey })(providerConfig.model);
+      case 'ollama':
+        return createOllama({
+        })(providerConfig.model);
       default:
         throw new Error(`Unsupported provider: ${provider}`);
     }
@@ -118,6 +126,11 @@ const createProvider = (selectedModel?: string) => {
   } else if (selectedModel.startsWith('gemini')) {
     const googleConfig = providerConfigs['google'];
     return createGoogleGenerativeAI({ apiKey: googleConfig.apiKey })(selectedModel);
+  } else if (selectedModel.startsWith('qwen')) {
+    const ollamaConfig = providerConfigs['ollama'];
+    return createOllama({
+      baseURL: ollamaConfig.baseURL
+    })(selectedModel);
   }
 
   throw new Error(`Unsupported model: ${selectedModel}`);
@@ -128,8 +141,8 @@ const createProvider = (selectedModel?: string) => {
 app.post('/', async c => {
   console.log('got a request');
   const result = streamText({
-    model: createProvider("gemini-1.5-flash-latest"),
-    prompt: 'Invent a new holiday and describe its traditions.',
+    model: createProvider("qwen2.5-coder:14b_ctx32k"),
+    messages: [{ role: 'user', content: '循环 10 print' }],
   });
 
 

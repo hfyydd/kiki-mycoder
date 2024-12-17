@@ -20,6 +20,11 @@ interface ApiKeyConfig {
         apiKey: string;
         enabled: boolean;
     };
+    ollama: {
+        model: string;
+        baseURL: string;
+        enabled: boolean;
+    };
 }
 
 type ProviderConfig = ApiKeyConfig[keyof Omit<ApiKeyConfig, 'systemPrompt'>];
@@ -44,6 +49,11 @@ function SettingsPanel() {
         google: {
             model: '',
             apiKey: '',
+            enabled: false
+        },
+        ollama: {
+            model: 'llama2',
+            baseURL: 'http://localhost:11434',
             enabled: false
         }
     });
@@ -95,6 +105,11 @@ function SettingsPanel() {
                     apiKey: data.llmConfig.providerConfigs.deepseek?.apiKey || '',
                     baseURL: data.llmConfig.providerConfigs.deepseek?.baseURL || '',
                     enabled: data.llmConfig.providerConfigs.deepseek?.enabled || false
+                },
+                ollama: {
+                    model: data.llmConfig.providerConfigs.ollama?.model || '',
+                    baseURL: data.llmConfig.providerConfigs.ollama?.baseURL || '',
+                    enabled: data.llmConfig.providerConfigs.ollama?.enabled || false
                 }
             };
             
@@ -302,6 +317,38 @@ function SettingsPanel() {
                         />
                     </div>
                 </div>
+
+                <div className="ollama-section">
+                    <div className="section-header">
+                        <div className="header-with-status">
+                            <h2>Ollama</h2>
+                            <select 
+                                className={`enable-select ${config.ollama.enabled ? 'enabled' : 'disabled'}`}
+                                value={config.ollama.enabled ? 'enabled' : 'disabled'}
+                                onChange={(e) => handleConfigChange('ollama', 'enabled', e.target.value === 'enabled')}
+                            >
+                                <option value="enabled">Enabled</option>
+                                <option value="disabled">Disabled</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="input-group">
+                        <input
+                            type="text"
+                            placeholder="Base URL"
+                            value={config.ollama.baseURL}
+                            onChange={(e) => handleConfigChange('ollama', 'baseURL', e.target.value)}
+                        />
+                    </div>
+                    <div className="input-group">
+                        <input
+                            type="text"
+                            placeholder="Model Name"
+                            value={config.ollama.model}
+                            onChange={(e) => handleConfigChange('ollama', 'model', e.target.value)}
+                        />
+                    </div>
+                </div>
             </div>
 
             <style>{`
@@ -371,7 +418,8 @@ function SettingsPanel() {
 
                 .azure-section,
                 .deepseek-section,
-                .google-section {
+                .google-section,
+                .ollama-section {
                     margin-bottom: 32px;
                     margin-top: 32px;
                     padding: 24px;
