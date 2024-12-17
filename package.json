@@ -85,7 +85,7 @@
     "pretest": "pnpm run build",
     "test": "node ./out/test/runTest.js",
     "package": "pnpm vsce package --no-dependencies",
-    "publish": "pnpm vsce publish --no-dependencies"
+    "publish": "pnpm run package && pnpm vsce publish --no-dependencies --packagePath *.vsix"
   },
   "devDependencies": {
     "@types/diff": "^6.0.0",
