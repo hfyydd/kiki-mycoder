@@ -1,0 +1,30 @@
+{
+  "llmConfig": {
+    "provider": "azure",
+    "model": "gpt-4o-mini",
+    "providerConfigs": {
+      "azure": {
+        "model": "gpt-4o-mini",
+        "resourceName": "santai",
+        "apiKey": "",
+        "enabled": true
+      },
+      "deepseek": {
+        "model": "deepseek-chat",
+        "baseURL": "https://api.deepseek.com",
+        "apiKey": "",
+        "enabled": true
+      },
+      "google": {
+        "model": "gemini-1.5-flash-latest",
+        "apiKey": "",
+        "enabled": true
+      },
+      "ollama": {
+        "model": "qwen2.5-coder:14b_ctx32k",
+        "baseURL": "http://localhost:11434/api",
+        "enabled": true
+      }
+    }
+  }
+}
