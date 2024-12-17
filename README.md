@@ -23,6 +23,10 @@ A VSCode extension inspired by Winsurf, providing AI-powered coding assistance r
 
 ## Installation 安装
 
+You can install this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=hfloveyy.kiki-mycoder).
+
+Or you can install it from source:
+
 1. Clone the repository
    ```bash
    git clone [https://github.com/hfyydd/kiki-mycoder.git]
