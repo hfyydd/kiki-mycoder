@@ -199,16 +199,48 @@ export class FileChangeMonitor {
 
     public async rejectChanges() {
         if (this.currentDiffEditor) {
-            // Close the diff editor without saving
-            for (const tabGroup of vscode.window.tabGroups.all) {
-                for (const tab of tabGroup.tabs) {
-                    if (tab.input instanceof vscode.TabInputTextDiff) {
-                        await vscode.window.tabGroups.close(tab);
+            try {
+                const currentUri = this.currentDiffEditor.document.uri;
+                const tempUri = vscode.Uri.file(`${currentUri.fsPath}.temp`);
+                
+                // 读取 .temp 文件的内容
+                const tempContent = await vscode.workspace.fs.readFile(tempUri);
+                
+                // 创建 WorkspaceEdit 来替换当前文件的内容
+                const edit = new vscode.WorkspaceEdit();
+                const currentDocument = await vscode.workspace.openTextDocument(currentUri);
+                const fullRange = new vscode.Range(
+                    currentDocument.positionAt(0),
+                    currentDocument.positionAt(currentDocument.getText().length)
+                );
+                
+                // 替换整个文件内容
+                edit.replace(
+                    currentUri,
+                    fullRange,
+                    Buffer.from(tempContent).toString('utf-8')
+                );
+                
+                // 应用编辑
+                await vscode.workspace.applyEdit(edit);
+                
+                // 保存文件
+                await currentDocument.save();
+                
+                // 关闭 diff 编辑器
+                for (const tabGroup of vscode.window.tabGroups.all) {
+                    for (const tab of tabGroup.tabs) {
+                        if (tab.input instanceof vscode.TabInputTextDiff) {
+                            await vscode.window.tabGroups.close(tab);
+                        }
                     }
                 }
+                
+                this.currentDiffEditor = undefined;
+                vscode.window.showInformationMessage('Changes rejected and file restored.');
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to reject changes: ${error}`);
             }
-            this.currentDiffEditor = undefined;
-            vscode.window.showInformationMessage('Changes rejected.');
         }
         this.hideButtons();
     }
