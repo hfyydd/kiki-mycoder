@@ -1,9 +1,26 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { FileChangeMonitor } from './FileChangeMonitor';
+import { ServerManager } from './server/ServerManager';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Kiki MyCoder is now active!');
+
+    // 启动后端服务
+    try {
+        const serverManager = ServerManager.getInstance();
+        await serverManager.startServer(context);
+        
+        // 将服务器管理器添加到订阅中，以便在插件停用时自动清理
+        context.subscriptions.push({
+            dispose: () => {
+                serverManager.dispose();
+            }
+        });
+    } catch (error) {
+        console.error('Failed to start backend server:', error);
+        vscode.window.showErrorMessage('Failed to start backend server');
+    }
 
     // 配置自动保存为 off
     vscode.workspace.getConfiguration().update('files.autoSave', 'off', vscode.ConfigurationTarget.Workspace);
@@ -270,7 +287,7 @@ function getWebviewContent(context: vscode.Uri, webview: vscode.Webview): string
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src http://localhost:8080 ws://localhost:8080; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-eval' 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src vscode-webview: http://localhost:8080 ws://localhost:8080; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-eval' 'nonce-${nonce}';">
         <title>Kiki MyCoder</title>
         <link href="${cssUri}" rel="stylesheet">
     </head>
@@ -292,7 +309,7 @@ function getSettingsWebviewContent(extensionUri: vscode.Uri, webview: vscode.Web
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src http://localhost:8080 ws://localhost:8080; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-eval' 'nonce-${nonce}';">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src vscode-webview: http://localhost:8080 ws://localhost:8080; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-eval' 'nonce-${nonce}';">
             <title>Kiki MyCoder Settings</title>
         </head>
         <body>
@@ -313,4 +330,7 @@ function generateNonce() {
     return text;
 }
 
-export function deactivate() {}
+export function deactivate() {
+    // 在这里不需要手动清理 ServerManager，因为它已经通过 context.subscriptions 注册了
+    console.log('Kiki MyCoder is now deactivated');
+}

@@ -1,7 +1,9 @@
 .vscode/**
 .vscode-test/**
-backend
-backend/**/*
+backend/src/**
+backend/node_modules/**
+backend/package.json
+backend/tsconfig.json
 node_modules/**
 src/**
 out/**

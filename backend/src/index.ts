@@ -1,4 +1,3 @@
-
 import { serve } from '@hono/node-server';
 import { createDataStream, streamText, DataStreamWriter, generateText } from 'ai';
 import 'dotenv/config';
@@ -126,7 +125,7 @@ const createProvider = (selectedModel?: string) => {
   } else if (selectedModel.startsWith('gemini')) {
     const googleConfig = providerConfigs['google'];
     return createGoogleGenerativeAI({ apiKey: googleConfig.apiKey })(selectedModel);
-  } else if (selectedModel.startsWith('qwen')) {
+  } else if (selectedModel.includes('qwen')) {
     const ollamaConfig = providerConfigs['ollama'];
     return createOllama({
       baseURL: ollamaConfig.baseURL
@@ -141,7 +140,7 @@ const createProvider = (selectedModel?: string) => {
 app.post('/', async c => {
   console.log('got a request');
   const result = streamText({
-    model: createProvider("qwen2.5-coder:14b_ctx32k"),
+    model: createProvider("gpt-4o-mini"),
     messages: [{ role: 'user', content: '循环 10 print' }],
   });
 

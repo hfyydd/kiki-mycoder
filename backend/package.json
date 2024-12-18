@@ -2,6 +2,7 @@
   "name": "ai-sdk-hono-server",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@ai-sdk/azure": "^1.0.9",
     "@ai-sdk/google": "^1.0.10",
@@ -15,10 +16,12 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "curl": "curl -i -X POST http://localhost:8080",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p ./tsconfig.json && node build.js && mkdir -p ../dist/backend && cp dist/index.bundle.mjs ../dist/backend/ && cp src/system-prompt.txt src/config*.json ../dist/backend/"
   },
   "devDependencies": {
     "@types/node": "20.11.20",
+    "esbuild": "^0.20.0",
     "tsx": "4.19.2",
     "typescript": "5.6.3"
   }

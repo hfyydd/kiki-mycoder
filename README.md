@@ -68,6 +68,12 @@ kiki-mycoder/
 └── README.md         # This file
 ```
 
+## Updates 更新日志
+
+### 2023-12-18
+- Backend integrated into plugin, now only one plugin download is needed for full functionality
+- 整合后端到插件，现在只需下载一个插件即可使用所有功能
+
 ## Contributing 贡献
 
 Feel free to submit issues and enhancement requests!

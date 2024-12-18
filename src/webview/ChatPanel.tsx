@@ -230,7 +230,7 @@ function ChatPanel() {
     const [selectedModel, setSelectedModel] = useState<string>('');
     const processedContentRef = useRef('');
     const { messages, input, handleInputChange, handleSubmit, addToolResult, isLoading, setMessages } = useChat({
-        api: 'http://localhost:8080/stream-data',
+        api:  'http://localhost:8080/stream-data',
         maxSteps: 5,
         fetch: async (url, options) => {
             const customParams = {
