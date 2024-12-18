@@ -1,7 +1,7 @@
 {
   "name": "kiki-mycoder",
   "displayName": "Kiki MyCoder",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "hfloveyy",
   "description": "AI-powered coding assistant for VS Code",
   "main": "./dist/extension.js",
