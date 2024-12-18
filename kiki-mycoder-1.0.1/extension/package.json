@@ -1,7 +1,7 @@
 {
   "name": "kiki-mycoder",
   "displayName": "Kiki MyCoder",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "publisher": "hfloveyy",
   "description": "AI-powered coding assistant for VS Code",
   "main": "./dist/extension.js",
@@ -80,7 +80,7 @@
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",
-    "build": "cd backend && pnpm run build && cd .. && tsc -p ./tsconfig.extension.json && vite build && cp dist/backend/config-template.json dist/backend/config.json",
+    "build": "cd backend && pnpm run build && cd .. && tsc -p ./tsconfig.extension.json && vite build",
     "watch": "tsc -watch -p ./tsconfig.extension.json",
     "dev": "vite",
     "pretest": "pnpm run build",

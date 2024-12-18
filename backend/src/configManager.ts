@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 interface ProviderConfig {
   model: string;
@@ -28,6 +29,8 @@ class ConfigManager {
   private config: Config;
 
   private constructor() {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
     this.configPath = path.join(__dirname, 'config.json');
     this.promptPath = path.join(__dirname, 'system-prompt.txt');
     this.config = {
@@ -53,8 +56,8 @@ class ConfigManager {
             enabled: false
           },
           ollama: {
-            model: 'qwen2.5-coder:14b',
-            baseURL: 'http://localhost:11434',
+            model: 'ticlazau/qwen2.5-coder-7b-instruct_32K:ctx32k',
+            baseURL: 'http://ipv4.ncncy.com:11434/api',
             enabled: false
           }
         },

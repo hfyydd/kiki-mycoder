@@ -20,3 +20,5 @@ vite.config.ts
 **/.eslintrc.json
 **/*.map
 .DS_Store
+**/config.json
+!**/config-template.json

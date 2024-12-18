@@ -140,7 +140,7 @@ const createProvider = (selectedModel?: string) => {
 app.post('/', async c => {
   console.log('got a request');
   const result = streamText({
-    model: createProvider("gpt-4o-mini"),
+    model: createProvider("qwen2.5-coder:14b"),
     messages: [{ role: 'user', content: '循环 10 print' }],
   });
 
