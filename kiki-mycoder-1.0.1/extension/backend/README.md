@@ -1,5 +1,0 @@
-```
-pnpm install
-pnpm dev
-```
-
