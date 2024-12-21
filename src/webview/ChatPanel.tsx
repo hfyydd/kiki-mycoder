@@ -13,6 +13,7 @@ import './ChatPanel.css';
 import { v4 as uuidv4 } from 'uuid';
 
 import { LoadingIndicator } from './components/LoadingIndicator';
+import path from 'path';
 
 const API_BASE_URL = 'http://localhost:8080';
 
@@ -319,10 +320,25 @@ function ChatPanel() {
         }
     };
 
+    const fetchDirectories = async () => {
+        try {
+            // 通过 vscode API 获取文件夹列表
+            vscode.postMessage({ 
+                type: 'getDirectories',
+                path: workspaceRoot
+            });
+        } catch (error) {
+            console.error('获取文件夹列表失败:', error);
+        }
+    }
+
     const handleDropdownItemClick = (item: { id: string, label: string }) => {
         if (item.id === 'files') {
             setDropdownType('files');
             fetchFiles();
+        } else if (item.id === 'directories') {
+            setDropdownType('directories');
+            fetchDirectories();
         } else {
             setDropdownType(null);
             setShowDropdown(false);

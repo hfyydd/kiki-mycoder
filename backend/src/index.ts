@@ -7,15 +7,12 @@ import { z } from 'zod';
 import { tool, CoreTool, ToolExecutionOptions } from 'ai';
 import { spawn } from 'child_process';
 import { createAzure } from '@ai-sdk/azure';
-
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOllama } from 'ollama-ai-provider';
-import { createOpenAI } from '@ai-sdk/openai'
-
-
+import { createOpenAI } from '@ai-sdk/openai';
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
 import { configManager } from './configManager';
 import { cors } from 'hono/cors';
 
@@ -77,6 +74,16 @@ app.use(async (c, next) => {
 
   await next();
 });
+
+// 获取扩展路径参数
+const extensionPath = process.argv[2];
+if (!extensionPath) {
+  console.error('Extension path is required as first argument');
+  process.exit(1);
+}
+
+// 初始化配置管理器
+configManager.initialize(extensionPath);
 
 // 创建 LLM provider 实例的函数
 const createProvider = (selectedModel?: string) => {
@@ -249,7 +256,7 @@ app.post('/stream-data', async c => {
             execute: async ({ path}) => {
               try {
                 const fullPath = join(workspaceRoot, path);
-                await fs.promises.mkdir(fullPath, { recursive: true });
+                await fs.mkdir(fullPath, { recursive: true });
                 return `目录已创建: ${fullPath}`;
               } catch (error) {
                 console.error('创建目录错误:', error);
@@ -270,7 +277,7 @@ app.post('/stream-data', async c => {
                 }
 
                 const fullPath = join(workspaceRoot, filePath);
-                const content = await readFile(fullPath, 'utf-8');
+                const content = await fs.readFile(fullPath, 'utf-8');
                 return content;
               } catch (error) {
                 console.error('读取文件错误:', error);
@@ -287,7 +294,7 @@ app.post('/stream-data', async c => {
             execute: async ({ filePath, itemName }) => {
               try {
                 const fullPath = join(workspaceRoot, filePath);
-                const content = await readFile(fullPath, 'utf-8');
+                const content = await fs.readFile(fullPath, 'utf-8');
                 const regex = new RegExp(`(function|class)\\s+${itemName}\\s*\\(`);
                 const match = content.match(regex);
                 if (match) {
@@ -318,7 +325,7 @@ app.post('/stream-data', async c => {
                 }
                 
                 const fullPath = join(workspaceRoot, filePath);
-                await writeFile(fullPath, content, 'utf-8');
+                await fs.writeFile(fullPath, content, 'utf-8');
                 return fullPath;
               } catch (error) {
                 console.error('写入文件错误:', error);
@@ -346,12 +353,12 @@ app.post('/stream-data', async c => {
                 const fullPath = join(workspaceRoot, filePath);
                 
                 // 保存原始文件内容到临时文件
-                const originalContent = await readFile(fullPath, 'utf-8');
+                const originalContent = await fs.readFile(fullPath, 'utf-8');
                 const tempFilePath = `${fullPath}.temp`;
-                await writeFile(tempFilePath, originalContent, 'utf-8');
+                await fs.writeFile(tempFilePath, originalContent, 'utf-8');
                 
                 // 写入新内容
-                await writeFile(fullPath, content, 'utf-8');
+                await fs.writeFile(fullPath, content, 'utf-8');
                 
                 return filePath;
               } catch (error) {

@@ -52,8 +52,8 @@ export class ServerManager {
             this.log(`Server path: ${serverPath}`);
             this.log(`Port: ${this.port}`);
 
-            // 启动 Node.js 进程
-            this.serverProcess = spawn('node', [serverPath], {
+            // 启动 Node.js 进程，传入扩展路径作为参数
+            this.serverProcess = spawn('node', [serverPath, context.extensionPath], {
                 env,
                 stdio: ['pipe', 'pipe', 'pipe']
             });

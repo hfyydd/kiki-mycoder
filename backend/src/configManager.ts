@@ -1,6 +1,5 @@
-import fs from 'fs/promises';
+import { promises as fs } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 interface ProviderConfig {
   model: string;
@@ -27,12 +26,13 @@ class ConfigManager {
   private configPath: string;
   private promptPath: string;
   private config: Config;
+  private extensionPath: string;
 
   private constructor() {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    this.configPath = path.join(__dirname, 'config.json');
-    this.promptPath = path.join(__dirname, 'system-prompt.txt');
+    // 初始化为空值，等待 initialize 时设置正确的路径
+    this.configPath = '';
+    this.promptPath = '';
+    this.extensionPath = '';
     this.config = {
       systemPrompt: '',
       llmConfig: {
@@ -68,9 +68,15 @@ class ConfigManager {
   public static getInstance(): ConfigManager {
     if (!ConfigManager.instance) {
       ConfigManager.instance = new ConfigManager();
-      ConfigManager.instance.loadConfig();
     }
     return ConfigManager.instance;
+  }
+
+  public initialize(extensionPath: string) {
+    this.extensionPath = extensionPath;
+    this.configPath = path.join(extensionPath, 'dist', 'backend', 'config.json');
+    this.promptPath = path.join(extensionPath, 'dist', 'backend', 'system-prompt.txt');
+    this.loadConfig();
   }
 
   public async loadConfig() {

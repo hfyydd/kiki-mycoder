@@ -7,14 +7,11 @@ await esbuild.build({
   target: 'node20',
   format: 'esm',
   outfile: './dist/index.bundle.mjs',
+  external: ['fs', 'path', 'child_process', 'url', 'http'],
   banner: {
     js: `
       import { createRequire } from 'module';
-      import { fileURLToPath } from 'url';
-      import { dirname } from 'path';
       const require = createRequire(import.meta.url);
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
     `
   }
 })
